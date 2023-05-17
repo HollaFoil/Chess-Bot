@@ -10,12 +10,14 @@
 
 class State {
 public:
+	int ID;
 	ULL blockers;
 	ULL whiteBlockers;
 	ULL blackBlockers;
 	ULL pinned;
 	ULL whiteKing;
 	ULL blackKing;
+	ULL enPassant;
 
 	ULL blockersCopy;
 	ULL whiteBlockersCopy;
@@ -24,13 +26,20 @@ public:
 	ULL whiteKingCopy;
 	ULL blackKingCopy;
 
+	bool canWhiteCastleQueen = true;
+	bool canWhiteCastleKing = true;
+	bool canBlackCastleQueen = true;
+	bool canBlackCastleKing = true;
+
 	square board;
 	int hash;
 	int eval = 0;
 	bool whiteToMove;
 	bool inCheck;
 
-	State() {}
+	State() {
+		ID = id++;
+	}
 
 	void GenerateDefault();
 	void LoadFromFen(std::string fen);
@@ -46,6 +55,7 @@ public:
 	ULL GetPawnPush(int row, int coll, int index);
 	ULL GetKnightMoves(int index);
 	ULL GetKingMoves(int index);
+	ULL GetKingCastling(int index);
 	bool IsMoveLegal(ULL from, ULL to);
 	State MutateCopy(ULL from, ULL to);
 	void Save();

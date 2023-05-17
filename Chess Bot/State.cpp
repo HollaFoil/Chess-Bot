@@ -40,13 +40,23 @@ ULL State::GetPawnCaptures(int row, int coll, int index) {
 }
 ULL State::GetPawnMoves(int row, int coll, int index) {
 	ULL pawnCaptureMask = GetPawnCaptures(row, coll, index);
-	ULL pawnCaptureMoves = pawnCaptureMask & blockers;
+	ULL pawnCaptureMoves = pawnCaptureMask & (blockers | enPassant);
 	return  pawnCaptureMoves | GetPawnPush(row, coll, index);
 }
 ULL State::GetKnightMoves(int index) {
 	return BitBoards::KnightTable[index];
 }
+ULL State::GetKingCastling(int index) {
+	ULL castling = 0ULL;
+	int color = (whiteBlockers & (1ULL << index)) ? WHITE : BLACK;
+	if (color == WHITE && canWhiteCastleKing && (blockers & CASTLE_KING_AFFECTED_MASK_WHITE) == (whiteKing | WHITE_ROOK_KING)) castling |= whiteKing >> 2;
+	if (color == WHITE && canWhiteCastleQueen && (blockers & CASTLE_QUEEN_AFFECTED_MASK_WHITE) == (whiteKing | WHITE_ROOK_QUEEN)) castling |= whiteKing << 2;
+	if (color == BLACK && canBlackCastleKing && (blockers & CASTLE_KING_AFFECTED_MASK_BLACK) == (blackKing | BLACK_ROOK_KING)) castling |= blackKing >> 2;
+	if (color == BLACK && canBlackCastleQueen && (blockers & CASTLE_QUEEN_AFFECTED_MASK_BLACK) == (blackKing | BLACK_ROOK_QUEEN)) castling |= blackKing << 2;
+	return castling;
+}
 ULL State::GetKingMoves(int index) {
+	
 	return BitBoards::KingTable[index];
 }
 
@@ -163,6 +173,20 @@ void State::LoadFromFen(std::string fen) {
 	}
 	blockers = whiteBlockers | blackBlockers;
 	whiteToMove = parts[1] == "w" ? true : false;
+	canWhiteCastleKing = false;
+	canWhiteCastleQueen = false;
+	canBlackCastleKing = false;
+	canBlackCastleQueen = false;
+	if (parts[2].find('K') != std::string::npos) canWhiteCastleKing = true;
+	if (parts[2].find('Q') != std::string::npos) canWhiteCastleQueen = true;
+	if (parts[2].find('k') != std::string::npos) canBlackCastleKing = true;
+	if (parts[2].find('q') != std::string::npos) canBlackCastleQueen = true;
+	if (parts[3] != "-") {
+		int enpassantIndex = parts[3][0] - 'a' + 8 * (8 - (parts[3][1] - '0'));
+		enPassant = 1ULL << (63 - enpassantIndex);
+		std::cout << enpassantIndex << " " << enPassant << std::endl;
+	}
+	else enPassant = 0ULL;
 	Save();
 }
 
@@ -186,17 +210,25 @@ void State::SetPiece(ULL from, ULL to) {
 	int fromRow = fromIndex / 8, fromColl = fromIndex % 8;
 	int pieceTo = board[toRow][toColl];
 	int pieceFrom = board[fromRow][fromColl];
+	int newPiece = pieceFrom;
+	if (pieceFrom == (WHITE | PAWN) && (to & RANK_8)) newPiece = WHITE | QUEEN;
+	else if (pieceFrom == (BLACK | PAWN) && (to & RANK_1)) newPiece = BLACK | QUEEN;
 	if (pieceTo & BLACK) {
 		blackBlockers ^= to;
 		hash ^= BitBoards::ZobristNumbers[GetPieceID(pieceTo)][toIndex];
-		board[toRow][toColl] = pieceFrom;
 	}
 	else if (pieceTo & WHITE) {
 		whiteBlockers ^= to;
 		hash ^= BitBoards::ZobristNumbers[GetPieceID(pieceTo)][toIndex];
-		board[toRow][toColl] = pieceFrom;
 	}
-	board[fromRow][fromColl] = EMPTY;
+	if (pieceFrom == (WHITE | PAWN) && to == enPassant) {
+		blackBlockers ^= (to << 8);
+		hash ^= BitBoards::ZobristNumbers[GetPieceID(BLACK | PAWN)][toIndex - 8];
+	}
+	else if (pieceFrom == (BLACK | PAWN) && to == enPassant) {
+		whiteBlockers ^= (to >> 8);
+		hash ^= BitBoards::ZobristNumbers[GetPieceID(WHITE | PAWN)][toIndex + 8];
+	}
 	if (pieceFrom & BLACK) {
 		blackBlockers ^= from;
 		blackBlockers ^= to;
@@ -205,22 +237,40 @@ void State::SetPiece(ULL from, ULL to) {
 		whiteBlockers ^= from;
 		whiteBlockers ^= to;
 	}
-	hash ^= BitBoards::ZobristNumbers[GetPieceID(pieceFrom)][fromIndex];
-	hash ^= BitBoards::ZobristNumbers[GetPieceID(pieceFrom)][toIndex];
+	board[toRow][toColl] = newPiece;
+	board[fromRow][fromColl] = EMPTY;
+	hash ^= BitBoards::ZobristNumbers[GetPieceID(newPiece)][fromIndex];
+	hash ^= BitBoards::ZobristNumbers[GetPieceID(newPiece)][toIndex];
 	hash ^= BitBoards::ZobristBlackToMove;
 	blockers = blackBlockers | whiteBlockers;
-	if (pieceFrom == (KING | WHITE)) whiteKing = to;
-	else if (pieceFrom == (KING | BLACK)) blackKing = to;
+	if (pieceFrom == (KING | WHITE)) {
+		whiteKing = to;
+		canWhiteCastleKing = false;
+		canWhiteCastleQueen = false;
+	}
+	else if (pieceFrom == (KING | BLACK)) {
+		blackKing = to;
+		canBlackCastleKing = false;
+		canBlackCastleQueen = false;
+	}
+	if ((from | to) & WHITE_ROOK_KING) canWhiteCastleKing = false;
+	if ((from | to) & WHITE_ROOK_QUEEN) canWhiteCastleQueen = false;
+	if ((from | to) & BLACK_ROOK_KING) canBlackCastleKing = false;
+	if ((from | to) & BLACK_ROOK_QUEEN) canBlackCastleQueen = false;
 }
 
 State State::MutateCopy(ULL from, ULL to) {
 	State next;
-	next.whiteToMove = !whiteToMove;;
+	next.whiteToMove = !whiteToMove;
 	for (int i = 0; i < 8; i++) {
 		for (int j = 0; j < 8; j++) {
 			next.board[i][j] = board[i][j];
 		}
 	}
+	next.canBlackCastleKing = canBlackCastleKing;
+	next.canBlackCastleQueen = canBlackCastleQueen;
+	next.canWhiteCastleKing = canWhiteCastleKing;
+	next.canWhiteCastleQueen = canWhiteCastleQueen;
 	next.whiteKing = whiteKing;
 	next.blackKing = blackKing;
 	next.blackBlockers = blackBlockers;
@@ -228,6 +278,10 @@ State State::MutateCopy(ULL from, ULL to) {
 	next.blockers = blockers;
 	next.hash = hash;
 	next.SetPiece(from, to);
+	if (to == whiteKing && (from >> 2) == to) next.SetPiece(WHITE_ROOK_KING, whiteKing << 1);
+	else if (to == whiteKing && (from << 2) == to) next.SetPiece(WHITE_ROOK_QUEEN, whiteKing >> 1);
+	else if (to == blackKing && (from >> 2) == to) next.SetPiece(BLACK_ROOK_KING, blackKing << 1);
+	else if (to == blackKing && (from << 2) == to) next.SetPiece(BLACK_ROOK_QUEEN, blackKing >> 1);
 	next.Save();
 	return next;
 }
@@ -271,7 +325,7 @@ ULL State::GetPieceMoves(int row, int coll) {
 		moves = GetKnightMoves(index);
 	}
 	else if (piece & KING) {
-		moves = GetKingMoves(index);
+		moves = GetKingMoves(index) | GetKingCastling(index);
 	}
 	return moves;
 }
@@ -301,6 +355,7 @@ ULL State::GenerateAttackTable(int color) {
 			if (color == WHITE && (blackBlockers & (1ULL << (63 - (8 * i + j))))) continue;
 			ULL moves;
 			if (board[i][j] & PAWN) moves = GetPawnCaptures(i, j, 63 - (8 * i + j));
+			else if (board[i][j] & KING) moves = GetKingMoves(63 - (8 * i + j));
 			else moves = GetPieceMoves(i, j);
 			attackTable |= moves;
 			//std::cout << "i: " << i << " j: " << j << " index: " << '\n';
@@ -315,13 +370,19 @@ ULL State::GenerateAttackTable(int color) {
 
 bool State::IsMoveLegal(ULL from, ULL to) {
 	if (from == to) return false;
-	if (whiteToMove && (whiteBlockers & to)) return false;
-	if (!whiteToMove && (blackBlockers & to)) return false;
+	else if (whiteToMove && (whiteBlockers & to)) return false;
+	else if (!whiteToMove && (blackBlockers & to)) return false;
 	MutateSaveState(from, to);
 	ULL opponentAttacks = GenerateAttackTable(whiteToMove ? BLACK : WHITE);
 	bool legal = true;
 	if (whiteToMove && (whiteKing & opponentAttacks)) legal = false;
-	if (!whiteToMove && (blackKing & opponentAttacks)) legal = false;
+	else if (!whiteToMove && (blackKing & opponentAttacks)) legal = false;
+
+	if (whiteToMove && to == whiteKing && (from >> 2) == to && (CASTLE_KING_ATTACK_MASK_WHITE & opponentAttacks)) legal = false;
+	else if (whiteToMove && to == whiteKing && (from << 2) == to && (CASTLE_QUEEN_ATTACK_MASK_WHITE & opponentAttacks)) legal = false;
+	else if (!whiteToMove && to == blackKing && (from >> 2) == to && (CASTLE_KING_ATTACK_MASK_BLACK & opponentAttacks)) legal = false;
+	else if (!whiteToMove && to == blackKing && (from << 2) == to && (CASTLE_QUEEN_ATTACK_MASK_BLACK & opponentAttacks)) legal = false;
+
 	Restore();
 	return legal;
 }
@@ -333,6 +394,7 @@ void State::Eval() {
 		for (int j = 0; j < 8; j++) {
 			int value = 0;
 			int piece = (board[i][j] ^ WHITE ^ BLACK) & board[i][j];
+			if (piece == EMPTY) continue;
 			int index = board[i][j] & BLACK ? i * 8 + j : 63 - (i * 8 + j);
 
 			switch (piece) {
