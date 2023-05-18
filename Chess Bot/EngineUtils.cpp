@@ -23,29 +23,7 @@ void print2(ULL num) {
 	}
 	std::cout << '\n';
 }
-void printsquare(square &num) {
-	ULL mask = 1ULL << 63;
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < 8; j++) {
-			int p = num[i][j];
-			if (p == EMPTY) std::cout << '.' << " ";
-			if (p == (KING|WHITE)) std::cout << 'K' << " ";
-			if (p == (KING|BLACK)) std::cout << 'k' << " ";
-			if (p == (QUEEN | WHITE)) std::cout << 'Q' << " ";
-			if (p == (QUEEN | BLACK)) std::cout << 'q' << " ";
-			if (p == (PAWN | WHITE)) std::cout << 'P' << " ";
-			if (p == (PAWN | BLACK)) std::cout << 'p' << " ";
-			if (p == (KNIGHT | WHITE)) std::cout << 'N' << " ";
-			if (p == (KNIGHT | BLACK)) std::cout << 'n' << " ";
-			if (p == (BISHOP | WHITE)) std::cout << 'B' << " ";
-			if (p == (BISHOP | BLACK)) std::cout << 'b' << " ";
-			if (p == (ROOK | WHITE)) std::cout << 'R' << " ";
-			if (p == (ROOK | BLACK)) std::cout << 'r' << " ";
-		}
-		std::cout << '\n';
-	}
-	std::cout << '\n';
-}
+
 
 Engine::Engine(bool PlayingAsWhite) {
 	IDTracker = 0;
@@ -58,46 +36,101 @@ void Engine::LoadFen(std::string fen) {
 }
 
 std::unordered_map<State, int, State::HashFunction> visited;
+std::unordered_map<State, std::pair<ULL, ULL>, State::HashFunction> bestMoves;
+std::unordered_map<State, std::pair<ULL, ULL>, State::HashFunction> bestMovesCopy;
 
-std::pair<int, std::pair<ULL, ULL>> GetStateEval(State &state, int maxDepth = 7, int depth = 1, int alpha = -1000000, int beta = 1000000) {
+int Quiescence(State& state, int alpha, int beta, int depth = 1) {
 	int color = state.whiteToMove ? WHITE : BLACK;
-	int evalScalar = state.whiteToMove ? 1 : -1;
-	if (depth == maxDepth) {
-		state.Eval();
-		return std::make_pair(state.eval * evalScalar, std::make_pair(0, 0));
+	//if (depth == 1 && !state.prevCapture) return state.eval;
+	if (state.eval >= beta) return beta;
+	if (alpha < state.eval) alpha = state.eval;
+	if (depth == 8) {
+		return state.eval;
 	}
-
 	if (visited.contains(state)) {
-		return std::make_pair(visited[state], std::make_pair(0,0));
+		return visited[state];
 	}
-	ULL bestFrom = -1;
-	ULL bestTo = -1;
+	bool isInCheck = state.isInCheck();
 	bool foundLegal = false;
 	for (int i = 0; i < 8; i++) {
 		for (int j = 0; j < 8; j++) {
 			if (!(state.board[i][j] & color)) continue;
 			ULL moves = state.GetPieceMoves(i, j);
+			ULL blockers = color == WHITE ? state.blackBlockers : state.whiteBlockers;
+			ULL maskedmoves = moves & blockers;
+			if (isInCheck) maskedmoves = moves;
+			while (maskedmoves != 0ULL) {
+				uint8_t index = getFirstSetBitPos(maskedmoves);
+				ULL from = 1ULL << (63 - (i * 8 + j));
+				ULL to = 1ULL << index;
+				maskedmoves ^= 1ULL << index;
+				if (!state.IsMoveLegal(from, to, isInCheck)) continue;
+				bool foundLegal = true;
+				State next = state.MutateCopy(from, to);
+				int eval = -Quiescence(next, -beta, -alpha, depth + 1);
+				if (eval >= beta) beta;
+				if (eval > alpha) {
+					alpha = eval;
+				}
+			}
+		}
+	}
+	if (isInCheck && !foundLegal) {
+		return std::max(beta, -90000 + 5000 * depth);
+	}
+	if (!foundLegal) {
+		//state.Eval();
+		return std::min(beta, state.eval);
+	}
+	return std::max(alpha, -999999);
+}
 
-			/*
-			std::cout << "Checking state at depth " << depth << std::endl;
-			printsquare(state.board);
-			std::cout << "Blockers, White blockers, Black blockers" << std::endl;
-			print2(state.blockers);
-			print2(state.whiteBlockers);
-			print2(state.blackBlockers);
-			*/
+std::pair<int, std::pair<ULL, ULL>> GetStateEval(State &state, int maxDepth = 7, int depth = 1, int alpha = -1000000, int beta = 1000000) {
+	int color = state.whiteToMove ? WHITE : BLACK;
+	if (depth == maxDepth) {
+		//int result = Quiescence(state, alpha, beta);
+		int result = state.eval;
+		return std::make_pair(result, std::make_pair(0, 0));
+	}
 
+	if (visited.contains(state)) {
+		return std::make_pair(visited[state], std::make_pair(0,0));
+	}
+	bool isInCheck = state.isInCheck();
+	ULL bestFrom = -1;
+	ULL bestTo = -1;
+	bool foundLegal = false;
+	if (bestMoves.contains(state)) {
+		std::pair<ULL, ULL> &p = bestMoves[state];
+		ULL from = p.first;
+		ULL to = p.second;
+		State next = state.MutateCopy(from, to);
+		foundLegal = true;
+		int eval = -GetStateEval(next, maxDepth, depth + 1, -beta, -alpha).first;
+		if (eval >= beta) return std::make_pair(std::min(beta, 999999), std::make_pair(0, 0));
+		if (eval > alpha) {
+			bestMovesCopy[state] = std::make_pair(from, to);
+			bestFrom = from;
+			bestTo = to;
+			alpha = eval;
+		}
+	}
+	for (int i = 0; i < 8; i++) {
+		for (int j = 0; j < 8; j++) {
+			if (!(state.board[i][j] & color)) continue;
+			ULL moves = state.GetPieceMoves(i, j);
 			while (moves != 0ULL) {
-				int index = getFirstSetBitPos(moves);
+				uint8_t index = getFirstSetBitPos(moves);
 				ULL from = 1ULL << (63 - (i * 8 + j));
 				ULL to = 1ULL << index;
 				moves ^= 1ULL << index;
-				if (!state.IsMoveLegal(from, to)) continue;
+				if (!state.IsMoveLegal(from, to, isInCheck)) continue;
 				foundLegal = true;
 				State next = state.MutateCopy(from, to);
 				int eval = -GetStateEval(next, maxDepth, depth + 1, -beta, -alpha).first;
-				if (eval >= beta) return std::make_pair(beta, std::make_pair(0, 0));
+				if (eval >= beta) return std::make_pair(std::min(beta, 999999), std::make_pair(0, 0));
 				if (eval > alpha) {
+					bestMovesCopy[state] = std::make_pair(from, to);
 					bestFrom = from;
 					bestTo = to;
 					alpha = eval;
@@ -105,19 +138,23 @@ std::pair<int, std::pair<ULL, ULL>> GetStateEval(State &state, int maxDepth = 7,
 			}
 		}
 	}
+	if (isInCheck && !foundLegal) {
+		if (depth == 3) {
+			std::cout << "yeah idk";
+		}
+		return std::make_pair(- 90000 + 5000 * depth, std::make_pair(0, 0));
+	}
+	if (!foundLegal) {
+		return std::make_pair(0, std::make_pair(0, 0));
+	}
 	visited.insert(std::make_pair(state, alpha));
 	return std::make_pair(std::max(alpha, -999999), std::make_pair(bestFrom, bestTo));
 	//if (bestFrom == -1)
 	
 }
 
-int quiescence(State& state) {
-
-}
-
 std::string Engine::GetMove() {
 	std::string move = "";
-	visited.clear();
 	visited.reserve(pow(2, 24));
 	current.Eval();
 	std::cout << "Eval depth 0:" << current.eval << std::endl;
@@ -131,5 +168,14 @@ std::string Engine::GetMove() {
 	move += '0' + (8 - indexFrom / 8);
 	move += 'a' + (indexTo % 8);
 	move += '0' + (8 - indexTo / 8);
+	bestMoves.swap(bestMovesCopy);
+	bestMovesCopy.clear();
+	visited.clear();
 	return move;
 }
+
+
+struct info {
+	int move = 0;
+	uint8_t bestMove;
+};

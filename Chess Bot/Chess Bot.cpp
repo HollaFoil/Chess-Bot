@@ -1,9 +1,10 @@
 ﻿#include <iostream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include "EngineUtils.h"
 #include <random>
 #include <bitset>
+#include "EngineUtils.h"
+#include "Polyglot.h"
 //For some fucking reason, be šios eilutės niekas neveikia
 #pragma comment(lib, "ws2_32.lib")
 #define DEFAULT_BUFLEN 512
@@ -45,9 +46,26 @@ int main()
         cout << "Message received:" << message << endl;
 
         // Čia kodas išrinkti geriausią ėjimą
-        Engine engine(true);
-        engine.LoadFen(message);
-        string move = engine.GetMove();
+        std::vector<std::string> parts;
+        size_t pos;
+        string fen = message;
+        while ((pos = fen.find(" ")) != std::string::npos) {
+            parts.push_back(fen.substr(0, pos));
+            fen.erase(0, pos + 1);
+        }
+        string allmoves = getMove(parts[0] + " " + parts[1] + " " + parts[2] + " " + parts[3] + " " + parts[4] + " " + parts[5]);
+        parts.clear();
+        string move;
+        if (allmoves == "") {
+            Engine engine(true);
+            engine.LoadFen(message);
+            move = engine.GetMove();
+        }
+        else {
+            move = allmoves.substr(0, 4);
+        }
+
+        
         
 
         // Send message (išsiųsti atrinktą ėjima serveriui)

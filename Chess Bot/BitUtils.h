@@ -12,14 +12,21 @@ inline int _popCount(ULL board) {
 	return std::popcount(board);
 }
 
-inline int getFirstSetBitPos(ULL n)
+inline uint8_t getFirstSetBitPos(ULL n)
 {
-	if (n == 0) return -1;
-	int pow = 0;
-	while (n != 1) {
-		++pow;
-		n = n >> 1;
-	}
-	return pow;
+	unsigned long pos;
+	_BitScanForward64(&pos, n);
+	return pos;
 }
+inline uint8_t getLastSetBitPos(ULL n) {
+	unsigned long pos;
+	_BitScanReverse64(&pos, n);
+	return pos;
+}
+
+bool isPowOfTwo(ULL bits)
+{
+	return bits && !(bits & (bits - 1));
+}
+
 #endif

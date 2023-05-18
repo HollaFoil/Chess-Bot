@@ -274,8 +274,8 @@ unsigned long long BitBoards::KnightTable[64];
 unsigned long long BitBoards::KingTable[64];
 unsigned long long BitBoards::PawnTableCaptures[2][64];
 unsigned long long BitBoards::PawnTableMoves[2][64];
-int BitBoards::ZobristNumbers[12][64];
-int BitBoards::ZobristBlackToMove;
+ULL BitBoards::ZobristNumbers[12][64];
+ULL BitBoards::ZobristBlackToMove;
 
 const int BitBoards::RookRellevantBits[64] = {
     12, 11, 11, 11, 11, 11, 11, 12,
@@ -386,7 +386,7 @@ void BitBoards::GenerateBishopMoves(int square, int index) {
         }
     }
     ULL magicsMultiplied = ((blockers & mask) * BitBoards::BishopMagics[square]);
-    ULL hash = (magicsMultiplied >> 64 - BitBoards::BishopRellevantBits[square]);
+    ULL hash = (magicsMultiplied >> (64 - BitBoards::BishopRellevantBits[square]));
     if (BitBoards::BishopTable[square][hash] != 0) {
         return;
     }
@@ -394,11 +394,11 @@ void BitBoards::GenerateBishopMoves(int square, int index) {
 }
 
 void BitBoards::GenerateZobristNumbers() {
-    const int range_from = INT_MIN;
-    const int range_to = INT_MAX;
+    const ULL range_to = 0xFFFFFFFFFFFFFFFFULL;
+    const ULL range_from = 0ULL;
     std::random_device                  rand_dev;
     std::mt19937                        generator(rand_dev());
-    std::uniform_int_distribution<int>  distr(range_from, range_to);
+    std::uniform_int_distribution<ULL>  distr(range_from, range_to);
     for (int i = 0; i < 12; i++) {
         for (int j = 0; j < 64; j++) {
             ZobristNumbers[i][j] = distr(generator);
@@ -426,7 +426,7 @@ void BitBoards::GenerateRookMoves(int square, int index) {
         }
     }
     ULL magicsMultiplied = ((blockers & mask) * BitBoards::RookMagics[square]);
-    ULL hash = (magicsMultiplied >> 64 - BitBoards::RookRellevantBits[square]);
+    ULL hash = (magicsMultiplied >> (64 - BitBoards::RookRellevantBits[square]));
     if (BitBoards::RookTable[square][hash] != 0) {
         return;
     }

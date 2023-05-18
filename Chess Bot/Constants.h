@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 #define ULL unsigned long long
 
 class BitBoards {
@@ -15,8 +16,8 @@ public:
 	static ULL KingTable[64];
 	static ULL PawnTableCaptures[2][64];
 	static ULL PawnTableMoves[2][64];
-	static int ZobristNumbers[12][64];
-	static int ZobristBlackToMove;
+	static ULL ZobristNumbers[12][64];
+	static ULL ZobristBlackToMove;
 	static void InitTables();
 private:
 	static ULL GetBlockersFromIndex(ULL mask, int index);
@@ -66,15 +67,15 @@ const ULL WHITE_ROOK_QUEEN = 0x0000000000000080ULL;
 const ULL BLACK_ROOK_KING  = 0x0100000000000000ULL;
 const ULL BLACK_ROOK_QUEEN = 0x8000000000000000ULL;
 
-const int EMPTY  = 0x0;
-const int KING   = 0x1;
-const int QUEEN  = 0x2;
-const int KNIGHT = 0x4;
-const int BISHOP = 0x8;
-const int ROOK   = 0x10;
-const int PAWN   = 0x20;
-const int WHITE  = 0x40;
-const int BLACK  = 0x80;
+const uint8_t EMPTY  = 0x0;
+const uint8_t KING   = 0x1;
+const uint8_t QUEEN  = 0x2;
+const uint8_t KNIGHT = 0x4;
+const uint8_t BISHOP = 0x8;
+const uint8_t ROOK   = 0x10;
+const uint8_t PAWN   = 0x20;
+const uint8_t WHITE  = 0x40;
+const uint8_t BLACK  = 0x80;
 
 const int PAWNSCORE   = 100;
 const int KNIGHTSCORE = 305;
@@ -117,7 +118,7 @@ const int bishopEval[64] = {
 };
 
 const int rookEval[64] = {
-        0, 0, 0, 5, 5, 0, 0, 0,
+        0, -1, -1, 5, 5, -1, -1, 0,
         -5, 0, 0, 0, 0, 0, 0, -5,
         -5, 0, 0, 0, 0, 0, 0, -5,
         -5, 0, 0, 0, 0, 0, 0, -5,
@@ -140,7 +141,7 @@ const int queenEval[64] = {
 
 const int kingEval[64] = {
         20, 30, 10, 0, 0, 10, 30, 20,
-        20, 20, 0, 0, 0, 0, 20, 20,
+        20, 20, -5, -5, -5, -5, 20, 20,
         -10, -20, -20, -20, -20, -20, -20, -10,
         20, -30, -30, -40, -40, -30, -30, -20,
         -30, -40, -40, -50, -50, -40, -40, -30,
